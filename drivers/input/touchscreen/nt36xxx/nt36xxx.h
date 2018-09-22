@@ -158,6 +158,14 @@ struct nvt_ts_data {
 	struct work_struct resume_work;
 	struct workqueue_struct *event_wq;
 	struct completion dev_pm_suspend_completion;
+#ifdef NVT_TOUCH_COUNT_DUMP
+	struct class *nvt_tp_class;
+	struct device *nvt_touch_dev;
+	bool dump_click_count;
+	char *current_clicknum_file;
+#endif
+	struct proc_dir_entry *input_proc;
+
 
 };
 
