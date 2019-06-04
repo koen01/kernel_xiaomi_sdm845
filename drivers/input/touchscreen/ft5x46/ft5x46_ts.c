@@ -181,9 +181,7 @@
 #define FT5X46_INPUT_EVENT_END				5
 
 #define LEN_FLASH_ECC_MAX		0xFFFE
-#define FT5X46_ESD_CHECK_PERIOD	5000
 
-static bool lcd_need_reset = false;
 static unsigned char proc_operate_mode = FT5X46_PROC_UPGRADE;
 static struct proc_dir_entry *ft5x46_proc_entry;
 #endif
@@ -1808,7 +1806,6 @@ int ft5x46_suspend(struct ft5x46_data *ft5x46)
 	mutex_unlock(&ft5x46->mutex);
 
 	cancel_delayed_work_sync(&ft5x46->noise_filter_delayed_work);
-	cancel_delayed_work_sync(&ft5x46->lcd_esdcheck_work);
 #ifdef CONFIG_TOUCHSCREEN_FT5X46P_PROXIMITY
 	cancel_delayed_work_sync(&ft5x46->prox_enable_delayed_work);
 #endif
@@ -1874,9 +1871,6 @@ int ft5x46_resume(struct ft5x46_data *ft5x46)
 
 	mutex_lock(&ft5x46->mutex);
 	ft5x46->in_suspend = false;
-
-	schedule_delayed_work(&ft5x46->lcd_esdcheck_work,
-				msecs_to_jiffies(FT5X46_ESD_CHECK_PERIOD));
 
 out:
 	mutex_unlock(&ft5x46->mutex);
@@ -2212,8 +2206,6 @@ static int ft5x46_enter_factory(struct ft5x46_data *ft5x46_ts)
 	u8 reg_val;
 	int error;
 
-	cancel_delayed_work_sync(&ft5x46_ts->lcd_esdcheck_work);
-
 	error = ft5x46_write_byte(ft5x46_ts, FT5X0X_REG_DEVIDE_MODE,
 							FT5X0X_DEVICE_MODE_TEST);
 	if (error)
@@ -2246,9 +2238,6 @@ static int ft5x46_enter_work(struct ft5x46_data *ft5x46_ts)
 		dev_info(ft5x46_ts->dev, "ERROR: The Touch Panel was not put in Normal Mode.\n");
 		return -1;
 	}
-
-	schedule_delayed_work(&ft5x46_ts->lcd_esdcheck_work,
-				msecs_to_jiffies(FT5X46_ESD_CHECK_PERIOD));
 
 	return 0;
 }
@@ -2681,27 +2670,6 @@ static ssize_t ft5x46_panel_vendor_show(struct device *dev,
 	return count;
 }
 
-static ssize_t ft5x46_lcd_esd_test(struct device *dev,
-				struct device_attribute *attr,
-				const char *buf, size_t count)
-{
-	int error;
-	unsigned long val;
-
-	error = kstrtoul(buf, 0, &val);
-
-	if (error) {
-		pr_err("Invalid data\n");
-		return -EINVAL;
-	}
-	if(val)
-		lcd_need_reset = true;
-	else
-		lcd_need_reset = false;
-
-	return error ? : count;
-}
-
 /* sysfs */
 #ifdef FT5X46_DEBUG_PERMISSION
 static DEVICE_ATTR(tpfwver, 0666, ft5x46_tpfwver_show, NULL);
@@ -2738,7 +2706,6 @@ static DEVICE_ATTR(prox_rawdata, 0444, ft5x46_prox_rawdata_show, NULL);
 static DEVICE_ATTR(irq_enable, 0644, ft5x46_irq_enable_show, ft5x46_irq_enable_store);
 static DEVICE_ATTR(panel_vendor, 0644, ft5x46_panel_vendor_show, NULL);
 #endif
-static DEVICE_ATTR(esd_test, 0644, NULL, ft5x46_lcd_esd_test);
 
 static struct attribute *ft5x46_attrs[] = {
 	&dev_attr_tpfwver.attr,
@@ -2757,7 +2724,6 @@ static struct attribute *ft5x46_attrs[] = {
 #endif
 	&dev_attr_irq_enable.attr,
 	&dev_attr_panel_vendor.attr,
-	&dev_attr_esd_test.attr,
 	NULL
 };
 
@@ -3654,8 +3620,6 @@ void ft5x46_hw_init_work(struct work_struct *work)
 	gpio_set_value_cansleep(pdata->reset_gpio, 1);
 	msleep(300);
 
-	set_skip_panel_dead(true);
-
 	/* For ft5x46, must swith to stdI2C mode before enter into firmware
 	 * loading state. But this operation is not needed for ft8716/fte716.
 	 */
@@ -3697,12 +3661,6 @@ void ft5x46_hw_init_work(struct work_struct *work)
 
 	ft5x46_enable_irq(ft5x46);
 	ft5x46->hw_is_ready = true;
-
-	queue_delayed_work(ft5x46->lcd_esdcheck_workqueue,
-						&ft5x46->lcd_esdcheck_work,
-						msecs_to_jiffies(FT5X46_ESD_CHECK_PERIOD));
-
-	set_skip_panel_dead(false);
 
 	return;
 
@@ -3750,8 +3708,6 @@ failed:
 		pdata->power_init(false);
 	else
 		ft5x46_power_init(ft5x46, false);
-
-	set_skip_panel_dead(false);
 
 	return;
 }
@@ -3924,47 +3880,6 @@ static ssize_t ft5x46_lockdown_info_read(struct file *file, char __user *buf, si
 static const struct file_operations ft5x46_lockdown_info_ops = {
 	.read		= ft5x46_lockdown_info_read,
 };
-
-int idc_esdcheck_lcderror(struct ft5x46_data *ft5x46)
-{
-	u8 val;
-	int ret;
-
-	ret = ft5x46_read_byte(ft5x46, 0xED, &val);
-	if (ret) {
-		dev_err(ft5x46->dev, "[ESD] Failed to read 0xaa\n");
-		return -EIO;
-	}
-
-	if (val == 0xAA) {
-		dev_err(ft5x46->dev, "[ESD] LCD esd, Need Execute LCD reset\n");
-		lcd_need_reset = true;
-	}
-	dev_dbg(ft5x46->dev, "%s ESD:0x%x\n", __func__, val);
-
-	if (lcd_need_reset == true) {
-		report_esd_panel_dead();
-		lcd_need_reset = false;
-	}
-
-	return 0;
-}
-
-static void esdcheck_func(struct work_struct *work)
-{
-
-	struct delayed_work *delayed_work = to_delayed_work(work);
-	struct ft5x46_data *ft5x46 = container_of(delayed_work, struct ft5x46_data, lcd_esdcheck_work);
-	if (!ft5x46)
-		return;
-
-	if (!ft5x46->in_suspend) {
-		idc_esdcheck_lcderror(ft5x46);
-		queue_delayed_work(ft5x46->lcd_esdcheck_workqueue,
-							&ft5x46->lcd_esdcheck_work,
-							msecs_to_jiffies(FT5X46_ESD_CHECK_PERIOD));
-	}
-}
 
 struct ft5x46_data *ft5x46_probe(struct device *dev,
 				const struct ft5x46_bus_ops *bops)
@@ -4258,12 +4173,6 @@ struct ft5x46_data *ft5x46_probe(struct device *dev,
 	INIT_DELAYED_WORK(&ft5x46->noise_filter_delayed_work,
 				ft5x46_noise_filter_delayed_work);
 
-	INIT_DELAYED_WORK(&ft5x46->lcd_esdcheck_work, esdcheck_func);
-	ft5x46->lcd_esdcheck_workqueue = create_workqueue("touch_lcd_esdcheck_wq");
-	if (!ft5x46->lcd_esdcheck_workqueue) {
-		dev_err(dev, "Failed to create lcd esd workqueue\n");
-		goto err_sysfs_create_virtualkeys;
-	}
 #ifdef CONFIG_TOUCHSCREEN_FT5X46P_PROXIMITY
 	INIT_DELAYED_WORK(&ft5x46->prox_enable_delayed_work,
 				ft5x46_prox_enable_delayed_work);
@@ -4370,7 +4279,6 @@ void ft5x46_remove(struct ft5x46_data *ft5x46)
 	cancel_delayed_work_sync(&ft5x46->prox_enable_delayed_work);
 #endif
 	cancel_delayed_work_sync(&ft5x46->noise_filter_delayed_work);
-	cancel_delayed_work_sync(&ft5x46->lcd_esdcheck_work);
 	power_supply_unreg_notifier(&ft5x46->power_supply_notifier);
 	if (ft5x46->vkeys_dir)
 		sysfs_remove_file(ft5x46->vkeys_dir, &ft5x46->vkeys_attr.attr);
