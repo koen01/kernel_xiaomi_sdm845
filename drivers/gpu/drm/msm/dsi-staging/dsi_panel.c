@@ -836,31 +836,22 @@ int dsi_panel_set_doze_backlight(struct dsi_display *display, u32 bl_lvl)
 	}
 
 	if (bl_lvl > panel->doze_backlight_threshold) {
-		if (drm_dev->doze_brightness != DOZE_BRIGHTNESS_HBM) {
-			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_HBM);
-			if (rc)
-				pr_err("[%s] failed to send DSI_CMD_SET_DOZE_LBM cmd, rc=%d\n",
-					   panel->name, rc);
-			drm_dev->doze_brightness = DOZE_BRIGHTNESS_HBM;
-		}
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_HBM);
+		if (rc)
+			pr_err("[%s] failed to send DSI_CMD_SET_DOZE_LBM cmd, rc=%d\n",
+					 panel->name, rc);
 		panel->in_aod = true;
 
 	} else if (bl_lvl <= panel->doze_backlight_threshold && bl_lvl > 0) {
-		if (drm_dev->doze_brightness != DOZE_BRIGHTNESS_LBM) {
-			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_LBM);
-			if (rc)
-				pr_err("[%s] failed to send DSI_CMD_SET_DOZE_HBM cmd, rc=%d\n",
-				       panel->name, rc);
-			drm_dev->doze_brightness = DOZE_BRIGHTNESS_LBM;
-		}
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_LBM);
+		if (rc)
+			pr_err("[%s] failed to send DSI_CMD_SET_DOZE_HBM cmd, rc=%d\n",
+					panel->name, rc);
 		panel->in_aod = true;
-	} else {
-		drm_dev->doze_brightness = DOZE_BRIGHTNESS_INVALID;
 	}
 
 	mutex_unlock(&panel->panel_lock);
 
-	pr_info("%s value:%u\n", __func__, drm_dev->doze_brightness);
 	return rc;
 }
 
