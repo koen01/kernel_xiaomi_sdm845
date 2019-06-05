@@ -124,6 +124,8 @@ struct ft5x46_data {
 #endif
 	struct delayed_work noise_filter_delayed_work;
 	struct work_struct work;
+	struct delayed_work lcd_esdcheck_work;
+	struct workqueue_struct *lcd_esdcheck_workqueue;
 	bool hw_is_ready;
 	u8 chip_id;
 	u8 is_usb_plug_in;
