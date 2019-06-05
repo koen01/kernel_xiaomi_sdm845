@@ -19,13 +19,11 @@
 #include <linux/of_graph.h>
 #include <linux/of_gpio.h>
 #include <linux/err.h>
-#include <drm/drm_notifier.h>
 
 #include "msm_drv.h"
 #include "sde_connector.h"
 #include "msm_mmu.h"
 #include "dsi_display.h"
-#include "dsi_panel.h"
 #include "dsi_panel.h"
 #include "dsi_ctrl.h"
 #include "dsi_ctrl_hw.h"
@@ -142,7 +140,6 @@ int dsi_display_set_backlight(void *display, u32 bl_lvl)
 {
 	struct dsi_display *dsi_display = display;
 	struct dsi_panel *panel;
-	struct drm_device *drm_dev;
 	u32 bl_scale, bl_scale_ad;
 	u64 bl_temp;
 	int rc = 0;
@@ -151,7 +148,6 @@ int dsi_display_set_backlight(void *display, u32 bl_lvl)
 		return -EINVAL;
 
 	panel = dsi_display->panel;
-	drm_dev = dsi_display->drm_dev;
 
 	mutex_lock(&panel->panel_lock);
 	if (!dsi_panel_initialized(panel)) {
@@ -166,6 +162,7 @@ int dsi_display_set_backlight(void *display, u32 bl_lvl)
 	bl_temp = bl_lvl * bl_scale / MAX_BL_SCALE_LEVEL;
 
 	bl_scale_ad = panel->bl_config.bl_scale_ad;
+	bl_temp = (u32)bl_temp * bl_scale_ad / MAX_AD_BL_SCALE_LEVEL;
 
 	pr_debug("bl_scale = %u, bl_scale_ad = %u, bl_lvl = %u\n",
 		bl_scale, bl_scale_ad, (u32)bl_temp);
@@ -178,20 +175,9 @@ int dsi_display_set_backlight(void *display, u32 bl_lvl)
 		goto error;
 	}
 
-	if (drm_dev && drm_dev->doze_state == DRM_BLANK_LP1) {
-		rc = dsi_panel_set_doze_backlight(display, (u32)bl_temp);
-		if (rc)
-			pr_err("unable to set doze backlight\n");
-
-		rc = dsi_panel_update_backlight(panel, (u32)bl_temp);
-		if (rc)
-			pr_err("unable to update doze backlight\n");
-	} else {
-		drm_dev->doze_brightness = DOZE_BRIGHTNESS_INVALID;
-		rc = dsi_panel_set_backlight(panel, (u32)bl_temp);
-		if (rc)
-			pr_err("unable to set backlight\n");
-	}
+	rc = dsi_panel_set_backlight(panel, (u32)bl_temp);
+	if (rc)
+		pr_err("unable to set backlight\n");
 
 	rc = dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
 			DSI_CORE_CLK, DSI_CLK_OFF);
@@ -985,26 +971,13 @@ static bool dsi_display_get_cont_splash_status(struct dsi_display *display)
 int dsi_display_set_power(struct drm_connector *connector,
 		int power_mode, void *disp)
 {
-	struct drm_device *dev = NULL;
 	struct dsi_display *display = disp;
-	struct drm_notify_data g_notify_data;
 	int rc = 0;
-	int event = 0;
 
 	if (!display || !display->panel) {
 		pr_err("invalid display/panel\n");
 		return -EINVAL;
 	}
-
-	if (!connector || !connector->dev) {
-		pr_err("invalid connector/dev\n");
-		return -EINVAL;
-	} else {
-		dev = connector->dev;
-		event = dev->doze_state;
-	}
-
-	g_notify_data.data = &event;
 
 	switch (power_mode) {
 	case SDE_MODE_DPMS_LP1:
@@ -1014,12 +987,9 @@ int dsi_display_set_power(struct drm_connector *connector,
 		rc = dsi_panel_set_lp2(display->panel);
 		break;
 	default:
-		drm_notifier_call_chain(DRM_EARLY_EVENT_BLANK, &g_notify_data);
 		rc = dsi_panel_set_nolp(display->panel);
-		drm_notifier_call_chain(DRM_EVENT_BLANK, &g_notify_data);
 		break;
 	}
-
 	return rc;
 }
 
@@ -5041,8 +5011,6 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 		 */
 		pr_debug("cmdline primary dsi: %s\n", display->name);
 		display->is_active = true;
-		display->is_prim_display = true;
-		display->is_first_boot = true;
 		dsi_display_parse_cmdline_topology(display, DSI_PRIMARY);
 		primary_np = pdev->dev.of_node;
 	}
@@ -5316,7 +5284,6 @@ int dsi_display_drm_bridge_deinit(struct dsi_display *display)
 	return rc;
 }
 
-extern struct drm_notify_data g_notify_data;
 int dsi_display_get_info(struct msm_display_info *info, void *disp)
 {
 	struct dsi_display *display;
@@ -5375,8 +5342,6 @@ int dsi_display_get_info(struct msm_display_info *info, void *disp)
 
 	if (display->panel->esd_config.esd_enabled)
 		info->capabilities |= MSM_DISPLAY_ESD_ENABLED;
-
-	g_notify_data.is_primary = info->is_primary;
 
 error:
 	mutex_unlock(&display->display_lock);
