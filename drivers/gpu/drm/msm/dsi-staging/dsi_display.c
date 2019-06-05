@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
- * Copyright (C) 2018 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -154,9 +153,8 @@ int dsi_display_set_backlight(void *display, u32 bl_lvl)
 	drm_dev = dsi_display->drm_dev;
 
 	if (!dsi_panel_initialized(panel)) {
-		pr_info("[%s] set backlight before panel initialized, caching value: %d\n",
-		dsi_display->name, bl_lvl);
-		return -EINVAL;
+		rc = -EINVAL;
+		goto error;
 	}
 
 	panel->bl_config.bl_level = bl_lvl;
@@ -4656,8 +4654,7 @@ int dsi_display_cont_splash_config(void *dsi_display)
 				display->is_cont_splash_enabled);
 
 	/* Set up ctrl isr before enabling core clk */
-	if (strcmp(display->name, "dsi_sim_vid_display"))
-		dsi_display_ctrl_isr_configure(display, true);
+	dsi_display_ctrl_isr_configure(display, true);
 
 	/* Vote for Core clk and link clk. Votes on ctrl and phy
 	 * regulator are inplicit from  pre clk on callback
@@ -5251,9 +5248,7 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 				secondary_active_node = NULL;
 				pr_debug("removed the existing comp ops\n");
 			}
-
 			display->is_active = true;
-
 			dsi_display_parse_cmdline_topology(display,
 					DSI_SECONDARY);
 			secondary_np = pdev->dev.of_node;

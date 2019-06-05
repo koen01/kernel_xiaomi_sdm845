@@ -246,7 +246,6 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 	}
 
 	SDE_ATRACE_BEGIN("dsi_bridge_pre_enable");
-
 	rc = dsi_display_prepare(c_bridge->display);
 	if (rc) {
 		pr_err("[%d] DSI display prepare failed, rc=%d\n",
@@ -422,12 +421,10 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 	}
 	display = c_bridge->display;
 
-	pr_debug("[lcd_performance]dsi_display_post_enable -- start");
 	rc = dsi_display_post_enable(display);
 	if (rc)
 		pr_err("[%d] DSI display post enabled failed, rc=%d\n",
 		       c_bridge->id, rc);
-	pr_debug("[lcd_performance]dsi_display_post_enable -- start");
 
 	if (display && display->drm_conn)
 		sde_connector_helper_bridge_enable(display->drm_conn);
@@ -448,13 +445,11 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 	if (display && display->drm_conn)
 		sde_connector_helper_bridge_disable(display->drm_conn);
 
-	pr_debug("[lcd_performance]dsi_display_pre_disable -- start");
 	rc = dsi_display_pre_disable(c_bridge->display);
 	if (rc) {
 		pr_err("[%d] DSI display pre disable failed, rc=%d\n",
 		       c_bridge->id, rc);
 	}
-	pr_debug("[lcd_performance]dsi_display_pre_disable -- start");
 }
 
 static void dsi_bridge_post_disable(struct drm_bridge *bridge)
@@ -494,31 +489,23 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 	drm_notifier_call_chain(DRM_EARLY_EVENT_BLANK, &g_notify_data);
 
 	SDE_ATRACE_BEGIN("dsi_bridge_post_disable");
-	pr_debug("[lcd_performance]dsi_bridge_post_disable -- start");
 	SDE_ATRACE_BEGIN("dsi_display_disable");
-	pr_debug("[lcd_performance]dsi_display_disable -- start");
 	rc = dsi_display_disable(c_bridge->display);
 	if (rc) {
 		pr_err("[%d] DSI display disable failed, rc=%d\n",
 		       c_bridge->id, rc);
-		pr_debug("[lcd_performance]dsi_display_disable -- end");
 		SDE_ATRACE_END("dsi_display_disable");
 		return;
 	}
-	pr_debug("[lcd_performance]dsi_display_disable -- end");
 	SDE_ATRACE_END("dsi_display_disable");
 
-	pr_debug("[lcd_performance]dsi_display_unprepare -- start");
 	rc = dsi_display_unprepare(c_bridge->display);
 	if (rc) {
 		pr_err("[%d] DSI display unprepare failed, rc=%d\n",
 		       c_bridge->id, rc);
-		pr_debug("[lcd_performance]dsi_bridge_post_disable -- end");
 		SDE_ATRACE_END("dsi_bridge_post_disable");
 		return;
 	}
-	pr_debug("[lcd_performance]dsi_display_unprepare -- end");
-	pr_debug("[lcd_performance]dsi_bridge_post_disable -- end");
 	SDE_ATRACE_END("dsi_bridge_post_disable");
 
 	drm_notifier_call_chain(DRM_EVENT_BLANK, &g_notify_data);

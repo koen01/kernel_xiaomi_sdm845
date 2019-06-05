@@ -4067,7 +4067,6 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 		pr_err("invalid params\n");
 		return -EINVAL;
 	}
-	pr_info("%s\n", __func__);
 
 	if (panel->type == EXT_BRIDGE)
 		return 0;
@@ -4089,7 +4088,6 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 		pr_err("invalid params\n");
 		return -EINVAL;
 	}
-	pr_info("%s\n", __func__);
 
 	if (panel->type == EXT_BRIDGE)
 		return 0;
@@ -4111,17 +4109,15 @@ int dsi_panel_set_nolp(struct dsi_panel *panel)
 		pr_err("invalid params\n");
 		return -EINVAL;
 	}
-	pr_info("%s\n", __func__);
 
 	if (panel->type == EXT_BRIDGE)
 		return 0;
 
 	mutex_lock(&panel->panel_lock);
-
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_NOLP);
 	if (rc)
 		pr_err("[%s] failed to send DSI_CMD_SET_NOLP cmd, rc=%d\n",
-				panel->name, rc);
+		       panel->name, rc);
 
 	panel->fod_hbm_enabled = false;
 	panel->in_aod = false;
@@ -4775,7 +4771,6 @@ int dsi_panel_enable(struct dsi_panel *panel)
 	panel->in_aod = false;
 
 	mutex_unlock(&panel->panel_lock);
-	pr_info("[LCD] %s: DSI_CMD_SET_ON\n", __func__);
 	return rc;
 }
 
@@ -4861,7 +4856,6 @@ int dsi_panel_disable(struct dsi_panel *panel)
 
 error:
 	mutex_unlock(&panel->panel_lock);
-	pr_info("[LCD] %s: DSI_CMD_SET_OFF\n", __func__);
 	return rc;
 }
 
