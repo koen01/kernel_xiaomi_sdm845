@@ -32,8 +32,6 @@ static BLOCKING_NOTIFIER_HEAD(drm_notifier_list);
 #define to_dsi_bridge(x)     container_of((x), struct dsi_bridge, base)
 #define to_dsi_state(x)      container_of((x), struct dsi_connector_state, base)
 
-#define WAIT_RESUME_TIMEOUT 200
-
 #define FAKE_PANEL_ID 9
 
 struct dsi_bridge *gbridge;
@@ -307,14 +305,6 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 int dsi_bridge_interface_enable(int timeout)
 {
 	int ret = 0;
-
-	ret = wait_event_timeout(resume_wait_q,
-		!atomic_read(&resume_pending),
-		msecs_to_jiffies(WAIT_RESUME_TIMEOUT));
-	if (!ret) {
-		pr_info("Primary fb resume timeout\n");
-		return -ETIMEDOUT;
-	}
 
 	mutex_lock(&gbridge->base.lock);
 
@@ -1112,10 +1102,8 @@ struct dsi_bridge *dsi_drm_bridge_init(struct dsi_display *display,
 
 	if (display->is_prim_display) {
 		gbridge = bridge;
-		atomic_set(&resume_pending, 0);
 		wakeup_source_init(&prim_panel_wakelock, "prim_panel_wakelock");
 		atomic_set(&prim_panel_is_on, false);
-		init_waitqueue_head(&resume_wait_q);
 		INIT_DELAYED_WORK(&prim_panel_work, prim_panel_off_delayed_work);
 	}
 
